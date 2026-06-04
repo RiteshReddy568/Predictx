@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Machine Diagnostics | Realtime Node</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="app-viewport">
+        <header>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <a href="/fleet"
+                    style="color: var(--text-muted); text-decoration: none; font-size: 0.8rem; border: 1px solid var(--border-ui); padding: 7px 12px; border-radius: 6px; font-weight: 500; background-color: var(--bg-surface);">«
+                    RETURN</a>
+                <h1>Machine Diagnostics <span class="sub-tag">REALTIME TERMINAL</span></h1>
+            </div>
+            <button class="theme-switch" id="uiThemeToggle">🌓 Switch Theme</button>
+        </header>
+
+        <div id="status-card" class="alert-banner">
+            <p class="alert-banner-lbl">STATUS</p>
+            <div id="status-text">CONNECTING PIPELINE...</div>
+        </div>
+
+        <div class="telemetry-grid">
+            <div class="metric-tile"><span class="metric-lbl">Vibration Channel</span>
+                <div class="metric-val"><span id="v">0.00</span><span class="metric-unit">mm/s</span></div>
+            </div>
+            <div class="metric-tile"><span class="metric-lbl">Core Temperature</span>
+                <div class="metric-val"><span id="t">0.00</span><span class="metric-unit">°C</span></div>
+            </div>
+            <div class="metric-tile"><span class="metric-lbl">Line Amp</span>
+                <div class="metric-val"><span id="c">0.00</span><span class="metric-unit">A</span></div>
+            </div>
+            <div class="metric-tile"><span class="metric-lbl">Terminal Voltage</span>
+                <div class="metric-val"><span id="vol">0.00</span><span class="metric-unit">V</span></div>
+            </div>
+        </div>
+
+        <div class="graph-card">
+            <span class="metric-lbl">Telemetry Signal Wave Matrix</span>
+            <div class="graph-wrapper"><canvas id="telemetryChart"></canvas></div>
+        </div>
+    </div>
+
+    <script>
+        const themeBtn = document.getElementById('uiThemeToggle');
+        const activeTheme = localStorage.getItem('industrial-theme') || 'light';
+        document.documentElement.setAttribute('data-theme', activeTheme);
+
+        themeBtn.addEventListener('click', () => {
+            let activeState = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', activeState);
+            localStorage.setItem('industrial-theme', activeState);
+            syncChartAesthetic(activeState);
+        });
+
+        const machineId = "{{ machine_id }}";
+        const ctx = document.getElementById('telemetryChart').getContext('2d');
+        const maxDataPoints = 20;
+
+        const telemetryChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array(maxDataPoints).fill(''),
+                datasets: [
+                    { label: 'Vibration', borderColor: '#2563eb', data: Array(maxDataPoints).fill(0), borderWidth: 2, tension: 0.15, pointRadius: 0 },
+                    { label: 'Temperature', borderColor: '#ea580c', data: Array(maxDataPoints).fill(0), borderWidth: 2, tension: 0.15, pointRadius: 0 },
+                    { label: 'Voltage', borderColor: '#7c3aed', data: Array(maxDataPoints).fill(0), borderWidth: 2, tension: 0.15, pointRadius: 0 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { display: false },
+                    y: { grid: { color: 'rgba(0,0,0,0.03)' }, ticks: { color: '#64748b' } }
+                },
+                plugins: { legend: { labels: { color: '#64748b', font: { weight: 500 } } } }
+            }
+        });
+
+        function syncChartAesthetic(theme) {
+            const fontColor = theme === 'dark' ? '#94a3b8' : '#64748b';
+            const wireframeColor = theme === 'dark' ? '#1f293d' : '#e2e8f0';
+            telemetryChart.options.scales.y.ticks.color = fontColor;
+            telemetryChart.options.scales.y.grid.color = wireframeColor;
+            telemetryChart.options.plugins.legend.labels.color = fontColor;
+            telemetryChart.update();
+        }
+        syncChartAesthetic(activeTheme);
+
+        function queryLiveHardwareStream() {
+            fetch(`/api/status/${machineId}`)
+                .then(res => res.json())
+                .then(data => {
+                    const statusTextEl = document.getElementById('status-text');
+                    const bannerContainer = document.getElementById('status-card');
+
+                    if (data.status === 'INACTIVE') {
+                        statusTextEl.innerText = "PORT DISCONNECTED";
+                        bannerContainer.className = 'alert-banner state-dead';
+                    } else {
+                        statusTextEl.innerText = data.prediction_status;
+                        bannerContainer.className = 'alert-banner ' + (data.prediction_status === 'NORMAL' ? 'state-ok' : 'state-fault');
+                    }
+
+                    document.getElementById('v').innerText = data.vibration.toFixed(2);
+                    document.getElementById('t').innerText = data.temperature.toFixed(2);
+                    document.getElementById('c').innerText = data.current.toFixed(2);
+                    document.getElementById('vol').innerText = data.voltage.toFixed(2);
+
+                    telemetryChart.data.datasets[0].data.push(data.vibration);
+                    telemetryChart.data.datasets[0].data.shift();
+                    telemetryChart.data.datasets[1].data.push(data.temperature);
+                    telemetryChart.data.datasets[1].data.shift();
+                    telemetryChart.data.datasets[2].data.push(data.voltage);
+                    telemetryChart.data.datasets[2].data.shift();
+                    telemetryChart.update('none');
+                });
+        }
+        setInterval(queryLiveHardwareStream, 2000);
+        queryLiveHardwareStream();
+    </script>
+</body>
+
+</html>

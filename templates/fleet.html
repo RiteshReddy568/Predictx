@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infrastructure Manager | Plant Matrix</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="app-viewport">
+        <header>
+            <div>
+                <h1>Plant Machinery Control <span class="sub-tag">SYSTEM OVERVIEW</span></h1>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: center;">
+                <button class="theme-switch" id="uiThemeToggle">🌓 Switch Theme</button>
+                <a href="/logout"
+                    style="color: var(--sys-red); text-decoration: none; font-size: 0.8rem; border: 1px solid var(--border-ui); padding: 8px 14px; border-radius: 6px; font-weight: 500;">LOGOUT</a>
+            </div>
+        </header>
+
+        <div id="fleet-matrix-grid" class="telemetry-grid" style="margin-top: 10px;"></div>
+    </div>
+
+    <script>
+        const themeBtn = document.getElementById('uiThemeToggle');
+
+        themeBtn.addEventListener('click', () => {
+            let activeState = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', activeState);
+            localStorage.setItem('industrial-theme', activeState);
+        });
+        document.documentElement.setAttribute('data-theme', localStorage.getItem('industrial-theme') || 'light');
+
+        function fetchFleetSystemData() {
+            fetch('/api/fleet/status')
+                .then(res => res.json())
+                .then(registryMap => {
+                    const gridContainer = document.getElementById('fleet-matrix-grid');
+                    gridContainer.innerHTML = '';
+
+                    for (const [mId, mObj] of Object.entries(registryMap)) {
+                        const online = mObj.status === 'ACTIVE';
+                        const runningNormal = mObj.prediction_status === 'NORMAL';
+
+                        let dynamicStateClass = 'state-ok';
+                        if (!online) dynamicStateClass = 'state-dead';
+                        else if (!runningNormal) dynamicStateClass = 'state-fault';
+
+                        gridContainer.innerHTML += `
+                            <div class="metric-tile ${dynamicStateClass}" onclick="window.location.href='/dashboard/${mId}'" style="cursor: pointer; border-width: 1px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                    <span class="metric-lbl" style="color: inherit; margin: 0;">PORT: ${mObj.port}</span>
+                                    <span style="font-size: 0.65rem; font-weight: 700; border: 1px solid; padding: 2px 6px; border-radius: 3px;">${mObj.status}</span>
+                                </div>
+                                <h3 style="margin: 0 0 6px 0; font-size: 1.25rem; font-weight: 600; color: var(--text-main);">${mObj.name}</h3>
+                                <div style="font-size: 0.8rem; opacity: 0.85;">Diagnostics: <strong style="text-transform: uppercase;">${mObj.prediction_status}</strong></div>
+                            </div>
+                        `;
+                    }
+                });
+        }
+        setInterval(fetchFleetSystemData, 2000);
+        fetchFleetSystemData();
+    </script>
+</body>
+
+</html>
